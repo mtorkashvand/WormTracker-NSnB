@@ -1,0 +1,43 @@
+Get started:
+
+1- download and install spinnaker SDK for windows
+	create a new environment variable and name it 'SPINNAKER_SDK', the value should be where spinnaker is installed
+	add 'SPINNAKER_SDK' to the 'Path' environment variable
+2- install anaconda
+3- install visual studio 2017
+4- clone vcpkg to install zeromq and docopt
+	git clone https://github.com/Microsoft/vcpkg.git
+	cd vcpkg
+	.\bootstrap-vcpkg.bat
+	.\vcpkg integrate install
+	vcpkg install zeromq:x64-windows
+	vcpkg install docopt:x64-windows
+6- clone cxxopts and add it to environment variables:
+	git clone https://github.com/jarro2783/cxxopts.git
+	create a new environment variable and name it 'CXXOPTS', the value should be the directory of 'include' folder
+	add 'CXXOPTS' to the 'Path' environment variable
+
+7- clone project repository
+	git clone <repo url>
+	create a new environment variable and name it 'WORMTRACKER_BIN', the value should be the directory of 'bin' folder
+	add 'WORMTRACKER_BIN' to the 'Path' environment variable
+8- open 'FlirCamera' VS project:
+	follow the instruction (lines 1 to 17)
+	change camera serial number (line 58)
+	build!
+   (different cameras might need slight changes) -> the camera on wormtracker was different than vlab cameras
+9- create a conda environment and name it 'wormtracker'
+	conda create --name wormtracker
+
+10- install python packages
+	activate wormtracker
+	conda install pyzmq
+	conda install numpy
+	conda install docopt
+	conda install -c conda-forge opencv
+	conda install h5py
+	conda install -c anaconda pyserial
+11- python setup.py develop
+12- todo : add xbox controller, add something to do simple tracking
+
+	
