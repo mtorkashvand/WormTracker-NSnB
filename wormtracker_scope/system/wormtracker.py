@@ -14,9 +14,13 @@ Usage:
 Options:
     -h --help                           Show this help.
     --format=FORMAT_STR                 Image format.
-                                            [default: UINT8_YX_1024_1024]
+                                            [default: UINT8_YX_1536_1536]
     --camera_serial_number=SN           Camera Serial Number.
                                             [default: 21181595]
+    --binsize=NUMBER                    Specify camera bin size.
+                                            [default: 1]
+    --exposure=VALUE                    Exposure time of flircamera in us.
+                                            [default: 1000]
 """
 
 import time
@@ -28,7 +32,7 @@ from docopt import docopt
 
 from wormtracker_scope.devices.utils import array_props_from_string
 
-def execute(job, fmt: str, camera_serial_number: str):
+def execute(job, fmt: str, camera_serial_number: str, binsize: str, exposure: str):
     """This runs all devices."""
 
     forwarder_in = str(5000)
@@ -42,7 +46,9 @@ def execute(job, fmt: str, camera_serial_number: str):
 
     (_, _, shape) = array_props_from_string(fmt)
     teensy_usb_port = "COM4"
-    flir_exposure = "25000"
+    flir_exposure = exposure
+    framerate = str(10)
+    binsize = str(binsize)
 
     data_directory = "C:\workspace\wormtracker\data\hdf_writer"
     logger_directory = "C:\workspace\wormtracker\data\logs"
@@ -72,7 +78,8 @@ def execute(job, fmt: str, camera_serial_number: str):
                        "--server=" + server_client,
                        "--inbound=L" + forwarder_out,
                        "--outbound=L" + forwarder_in,
-                       "--name=hub"]))
+                       "--name=hub",
+                       "--framerate="+ framerate]))
 
     job.append(Popen(["wormtracker_forwarder",
                       "--inbound=" + forwarder_in,
@@ -86,7 +93,9 @@ def execute(job, fmt: str, camera_serial_number: str):
                     "--data=*:" + data_camera_out,
                     "--width=" + str(shape[1]),
                     "--height=" + str(shape[0]),
-                    "--exposure_time=" + flir_exposure]))
+                    "--exposure_time=" + flir_exposure,
+                    "--framerate=" + framerate,
+                    "--binsize=" + binsize]))
 
     job.append(Popen(["wormtracker_data_hub",
                         "--data_in=L" + data_camera_out,
@@ -131,7 +140,7 @@ def execute(job, fmt: str, camera_serial_number: str):
 
 
 
-def run(fmt: str, camera_serial_number: str):
+def run(fmt: str, camera_serial_number: str, binsize: str, exposure: str):
     """Run all system devices."""
 
     jobs = []
@@ -147,7 +156,7 @@ def run(fmt: str, camera_serial_number: str):
 
     signal.signal(signal.SIGINT, finish)
 
-    execute(jobs, fmt, camera_serial_number)
+    execute(jobs, fmt, camera_serial_number, binsize, exposure)
 
     while True:
         time.sleep(1)
@@ -159,7 +168,9 @@ def main():
 
     run(
         fmt=args["--format"],
-        camera_serial_number=args["--camera_serial_number"]
+        camera_serial_number=args["--camera_serial_number"],
+        binsize=args["--binsize"],
+        exposure=args["--exposure"]
     )
 
 if __name__ == "__main__":

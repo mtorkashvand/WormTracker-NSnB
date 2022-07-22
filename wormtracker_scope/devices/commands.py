@@ -51,6 +51,7 @@ class XboxStageCommands():
             b"A pressed",
             b"dpad_up pressed", b"dpad_up released",
             b"dpad_down pressed", b"dpad_down released",
+            b"dpad_right pressed", b"dpad_left pressed",
             b"right_stick", b"left_stick",
             b"left_shoulder pressed", b"right_shoulder pressed"
             ]
@@ -63,6 +64,7 @@ class XboxStageCommands():
         tracking_state = False
         recording_state = False
         led_state = False
+        laser_state = False
         def _finish(*_):
             raise SystemExit
 
@@ -77,37 +79,39 @@ class XboxStageCommands():
 
             tokens = message.split(" ")
             if message == "B pressed":
-                if recording_state:
-                    self.publish("writer stop")
-                    recording_state = False
-                else:
-                    self.publish("writer start")
-                    recording_state = True
+                # if recording_state:
+                #     self.publish("writer stop")
+                #     recording_state = False
+                # else:
+                self.publish("writer toggle")
+                #     recording_state = True
             
             elif message == "X pressed":
-                if led_status:
+                if led_state:
                     self.publish("teensy_commands set_led 0")
-                    led_status = False
+                    led_state = False
                 else:
                     self.publish("teensy_commands set_led 1")
-                    led_status = True
+                    led_state = True
 
             elif message == "A pressed":
-                if tracking_state:
-                    self.publish("tracker stop")
-                    tracking_state = False
-                else:
-                    self.publish("tracker start")
-                    tracking_state = True
+                self.publish("tracker toggle_tracking")
 
             elif message == "Y pressed":
-                self.publish("tracker stop")
-                self.publish("writer stop")
-                self.publish("teensy_commands movex 0")
-                self.publish("teensy_commands movey 0")
-                self.publish("teensy_commands movez 0")
-                recording_state = False
-                tracking_state = False
+                if laser_state:
+                    self.publish("teensy_commands set_laser 0")
+                    laser_state = 0
+                else:
+                    self.publish("teensy_commands set_laser 1")
+                    laser_state = 1
+                # self.publish("tracker stop")
+                # self.publish("writer stop")
+                # self.publish("teensy_commands movex 0")
+                # self.publish("teensy_commands movey 0")
+                # self.publish("teensy_commands movez 0")
+                # recording_state = False
+                # tracking_state = False
+
 
             elif message == "dpad_up pressed":
                 self.publish("teensy_commands start_z_move 1")
@@ -127,17 +131,25 @@ class XboxStageCommands():
             elif message == "right_shoulder pressed":
                 self.publish("teensy_commands change_vel_z 1")
 
+            elif message == "dpad_right pressed":
+                self.publish("tracker change_threshold 1")
+
+            elif message == "dpad_left pressed":
+                self.publish("tracker change_threshold -1")
+
+
+
             elif tokens[0] == "left_stick":
-                xspeed = int(tokens[1] // 5)
-                yspeed = int(tokens[2] // 5)
+                xspeed = int(tokens[1]) // 50
+                yspeed = int(tokens[2]) // 50
                 self.publish("teensy_commands movey {}".format(yspeed))
-                self.publish("teensy_commands movex {}".format(xspeed))
+                self.publish("teensy_commands movex {}".format(-xspeed))
 
             elif tokens[0] == "right_stick":
                 xspeed = int(tokens[1])
                 yspeed = int(tokens[2])
                 self.publish("teensy_commands movey {}".format(yspeed))
-                self.publish("teensy_commands movex {}".format(xspeed))
+                self.publish("teensy_commands movex {}".format(-xspeed))
 
             else:
                 print("Unexpected message received: ", message)

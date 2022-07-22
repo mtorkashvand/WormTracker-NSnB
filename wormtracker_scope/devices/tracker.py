@@ -23,6 +23,7 @@ Options:
                                             [default: UINT8_YX_512_512]
 """
 
+import pstats
 import time
 import json
 from typing import Tuple
@@ -38,6 +39,8 @@ from wormtracker_scope.zmq.subscriber import ObjectSubscriber
 from wormtracker_scope.zmq.utils import parse_host_and_port
 from wormtracker_scope.devices.utils import array_props_from_string
 
+
+
 class TrackerDevice():
     """This creates a device that subscribes to images from a camera
     and sends commands to the motors"""
@@ -51,6 +54,7 @@ class TrackerDevice():
             fmt: str,
             name="tracker"):
 
+        np.seterr(divide = 'ignore')
         self.status = {}
         self.data_out = data_out
         self.data_in = data_in
@@ -59,15 +63,23 @@ class TrackerDevice():
         (self.dtype, _, self.shape) = array_props_from_string(fmt)
         self.out = np.zeros(self.shape, dtype=self.dtype)
 
-        # self.tracker = ObjectDetector(self.shape)
-        # self.pid = PIDController(10, 0.0, 0.0,
-        #                          self.shape[2] // 2, self.shape[1] // 2,
-        #                          1, 0.025)
+        self.data = np.zeros(self.shape)
+        self.crop_size = self.shape[0] / 3
+        self.crop_size_flag = False
+        self.mean_sharpness = 0
+        # self.max_sharpness = 0
+        self.sharpness = 0
+        self.threshold = 30
+        self.counter = 0
+        self.vz = 16
+        self.deltax = 0
+        self.deltay = 0
+        self.bbox = [0, 0, self.shape[0], self.shape[1]]
+        self.tracking = 0
 
-        # self.camera_number = 1
+        self.ds_shape = self.data[::4, ::4].shape
 
         self.running = 1
-        self.tracking = 0
 
         self.command_publisher = Publisher(
             host=commands_out[0],
@@ -101,30 +113,126 @@ class TrackerDevice():
         time.sleep(1)
         self.publish_status()
 
+        self.mask = self.get_mask(self.data[::4, ::4].shape[0])
+
+    def get_mask(self, radius):
+
+        r = np.linspace(int((1-radius) / 2),
+                        int((1+radius) / 2), radius)
+
+        Y, X = np.meshgrid(r, r, indexing='ij')
+        
+        g = np.exp(-(Y**4)/(2.0 * radius**4)
+                   -(X**4)/(2.0 * radius**4))
+
+        return g / np.max(g)
+
+
     def process(self):
         """This processes the incoming images and sends move commands to zaber."""
         msg = self.data_subscriber.get_last()
 
         if msg is not None:
-            data = msg[1]
-        # _, data = self.data_subscriber.get_last()
+            self.data = msg[1]
 
-        # try:
-        #     self.tracker.get_bbox(data)
-        # except:
-        #     pass
 
-        # p1 = (int(self.tracker.bbox[0]), int(self.tracker.bbox[1]))
-        # p2 = (int(self.tracker.bbox[0] + self.tracker.bbox[2]),
-        #       int(self.tracker.bbox[1] + self.tracker.bbox[3]))
+        # t0 = time.time()
+        dsimg = np.invert(self.data[::4, ::4])
+        dsimg = cv2.medianBlur(dsimg, 3)
+        dsimg = np.multiply(dsimg, self.mask)
+        dsimg = dsimg.astype(np.float16) / max(dsimg.max(), 1)
+        dsimg = (dsimg ** 4 * 255).astype(np.uint8)
+        dsimg[dsimg<self.threshold]=0
+        contours, _ = cv2.findContours(dsimg, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-        # img = self.tracker.out.copy()
+        if len(contours) >= 1:
+            max_size_idx = np.argmax([contour.shape[0] for contour in contours])
+            self.bbox = cv2.boundingRect(contours[max_size_idx])
+            self.bbox = [4 * i for i in self.bbox]
 
-        # cv2.rectangle(img, p1, p2, (255,255,255), 2, 1)
-        # cv2.circle(img, (self.shape[2] // 2, self.shape[1] // 2), 2, (255, 255, 255), 1)
 
-        # self.out[0, ...] = img
-        self.data_publisher.send(data)
+        self.Dx= self.bbox[0] + self.bbox[2] // 2 - self.shape[1] // 2
+        self.Dy = self.bbox[1] + self.bbox[3] // 2 - self.shape[0] // 2
+        self.vx = np.sign(self.Dx) * int(((np.abs(self.Dx) * 2 / self.shape[1]) ** 0.7) * self.shape[1] / 2)
+        self.vy = np.sign(self.Dy) * int(((np.abs(self.Dy) * 2 / self.shape[0]) ** 0.7) * self.shape[0] / 2)
+        p1 = (self.bbox[0], self.bbox[1])
+        p2 = (self.bbox[0] + self.bbox[2], self.bbox[1] + self.bbox[3])
+
+
+
+        
+
+        center = [self.bbox[0] + self.bbox[2] // 2, self.bbox[1] + self.bbox[3] // 2]
+        x_range = [max(0, center[0] - self.crop_size // 2), min(self.shape[0]-1, center[0] + self.crop_size // 2)]
+        y_range = [max(0, center[1] - self.crop_size // 2), min(self.shape[1]-1, center[1] + self.crop_size // 2)]
+
+        cropped_img = self.data[int(y_range[0]):int(y_range[1]), int(x_range[0]):int(x_range[1])]
+
+        try:
+            sharpness = self.calculate_sharpness(cropped_img)
+        except:
+            sharpness = 0
+        
+        self.mean_sharpness += (sharpness / 10)
+
+        if self.counter % 5 == 0:
+            delta = self.mean_sharpness - self.sharpness
+            if delta < 0:
+                self.vz = -self.vz
+            self.sharpness = self.mean_sharpness
+            self.mean_sharpness = 0
+
+
+        # print(time.time() - t0)
+
+        annotated_img = self.data.copy()
+        cv2.rectangle(annotated_img, p1, p2, (0, 0, 0), 2, 1)
+
+        self.data_publisher.send(annotated_img)
+        if self.tracking:
+            if not self.crop_size_flag:
+                self.crop_size = max(self.bbox[2], self.bbox[3]) // 2
+                self.crop_size_flag=True
+            
+            self.command_publisher.send("teensy_commands movey {}".format(-self.vy))
+            self.command_publisher.send("teensy_commands movex {}".format(-self.vx))
+            self.command_publisher.send("teensy_commands movez {}".format(self.vz))
+        
+        self.counter += 1
+
+
+    def calculate_sharpness(self, img, size=10):
+        (h, w) = img.shape
+        (cX, cY) = (int(w / 2), int(h / 2))
+        fft = np.fft.fft2(img)
+        fftShift = np.fft.fftshift(fft)
+        fftShift[cY - size:cY + size, cX - size:cX + size] = 0
+        fftShift = np.fft.ifftshift(fftShift)
+        recon = np.fft.ifft2(fftShift)
+        magnitude = 20 * np.log(np.abs(recon))
+        return np.mean(magnitude)
+        
+
+
+
+    def change_threshold(self, direction):
+        self.threshold = np.clip(self.threshold + direction, 0, 255)
+
+        print("Threshold: {}".format(self.threshold))
+
+    
+    def toggle_tracking(self):
+        if self.tracking:
+            print("tracking stopped")
+            self.command_publisher.send("teensy_commands movey 0")
+            self.command_publisher.send("teensy_commands movex 0")
+            self.command_publisher.send("teensy_commands movez 0")
+            self.tracking = 0
+            self.crop_size_flag = False
+        else:
+            self.tracking = 1
+            print("tracking started")
+
 
     def set_shape(self, y ,x):
         self.poller.unregister(self.data_subscriber.socket)

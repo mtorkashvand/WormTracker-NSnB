@@ -17,6 +17,7 @@ import json
 import time
 from typing import Tuple
 
+import numpy as np
 from serial import Serial
 from docopt import docopt
 
@@ -30,6 +31,7 @@ class TeensyCommandsDevice():
 
     _COMMANDS = {
         "set_led":"l{led_status}\n",
+        "set_laser":"L{laser_status}\n",
         "vx":"vx{xvel}\n",
         "vy":"vy{yvel}\n",
         "vz":"vz{zvel}\n",
@@ -41,7 +43,7 @@ class TeensyCommandsDevice():
             self,
             inbound: Tuple[str, int, bool],
             outbound: Tuple[str, int, bool],
-            port='COM4',
+            port,
             name="teensy_commands",):
 
         self.status = {}
@@ -93,8 +95,11 @@ class TeensyCommandsDevice():
     def enable(self):
         self._execute("enable")
 
+    def set_laser(self, laser_status):
+        self._execute("set_laser", laser_status=laser_status)
+
     def change_vel_z(self, sign):
-        self.zspeed = self.zspeed * 2 ** sign
+        self.zspeed = int(np.clip(self.zspeed * 2 ** sign, 1, 1024))
         print("zspeed is: {}".format(self.zspeed))
 
     def start_z_move(self, sign):
@@ -102,6 +107,7 @@ class TeensyCommandsDevice():
 
     def shutdown(self):
         self.device_status = 0
+        self.set_led(0)
         self.disable()
         self.serial_obj.close()
         self.serial_obj.__del__()

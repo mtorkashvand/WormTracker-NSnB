@@ -61,6 +61,9 @@ class  WriteSession(multiprocessing.Process):
         self.status = {}
         self.device_status = 1
         self.subscription_status = 0
+        self.counter = 0
+        self.max_frame_no = 200
+
 
         self.name = name
         self.video_name = video_name
@@ -114,6 +117,7 @@ class  WriteSession(multiprocessing.Process):
         """Closes the hdf file, updates the status. """
         if self.subscription_status:
             self.subscription_status = 0
+            self.counter =0
             self.writer.close()
             print("Recording Ended.")
 
@@ -134,10 +138,25 @@ class  WriteSession(multiprocessing.Process):
                 self.command_subscriber.handle()
 
 
-            elif self.subscription_status:
-                if self.data_subscriber.socket in sockets:
-                    self.writer.save_frame()
+            elif self.subscription_status : 
+                if self.counter < self.max_frame_no :
 
+                    if self.data_subscriber.socket in sockets:
+                        self.writer.save_frame()
+                        self.counter +=1
+                else:
+                    self.stop()
+
+    def toggle(self) :
+        if self.subscription_status :
+            self.stop()
+
+        else :
+            self.start()
+
+    def set_duration(self, duration):
+        self.max_frame_no = duration
+        print("the number of frames are set to: {}, and of course hello world!!".format(duration))
 
 def main():
     """CLI entry point."""

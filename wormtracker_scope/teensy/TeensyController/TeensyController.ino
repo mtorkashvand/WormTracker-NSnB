@@ -7,7 +7,7 @@
 #define MS1 5
 #define N_ENABLE 6
 #define LED 21
-#define LASER 23
+#define LASER 22
 
 AccelStepper stepperX(AccelStepper::DRIVER,1,0);
 AccelStepper stepperY(AccelStepper::DRIVER,8,7);
@@ -60,11 +60,11 @@ void setup()
   for (int j=0; j<25; j++)
     pinMode(j, OUTPUT);
 
-  stepperX.setMaxSpeed(1000.0);
-  stepperY.setMaxSpeed(1000.0);
-  stepperZ.setMaxSpeed(1000.0);
-  stepperX.setAcceleration(50000.0);
-  stepperY.setAcceleration(50000.0);
+  stepperX.setMaxSpeed(1024.0);
+  stepperY.setMaxSpeed(1024.0);
+  stepperZ.setMaxSpeed(1024.0);
+  stepperX.setAcceleration(10000.0);
+  stepperY.setAcceleration(10000.0);
   stepperZ.setAcceleration(5000.0);
   stepperX.setSpeed(0.0);
   stepperY.setSpeed(0.0);
@@ -91,6 +91,11 @@ void loop()
         if (comBuf[1] == '0') digitalWrite(LED, LOW);
         else if (comBuf[1] == '1') digitalWrite(LED, HIGH);
       }
+      if (comBuf[0] == 'L')
+      {
+        if (comBuf[1] == '0') digitalWrite(LASER, LOW);
+        else if (comBuf[1] == '1') digitalWrite(LASER, HIGH);
+      }
       else if (comBuf[0] == 'v')
       {
         if (comBuf[1] == 'x') stepperX.setSpeed(atof(comBuf+2));
@@ -99,6 +104,12 @@ void loop()
       }
       else if (comBuf[0] == 'q')
       {
+        stepperX.setSpeed(1024);
+        stepperY.setSpeed(1024);
+        stepperZ.setSpeed(1024);
+        stepperX.runToNewPosition(0);
+        stepperY.runToNewPosition(0);
+        stepperZ.runToNewPosition(0);
         stepperX.setSpeed(0);
         stepperY.setSpeed(0);
         stepperZ.setSpeed(0);
@@ -148,7 +159,7 @@ void loop()
   if (x < -25000 && xspeed < 0) stepperX.setSpeed(0);
   if (y >  18000 && yspeed > 0) stepperY.setSpeed(0);
   if (y < -18000 && yspeed < 0) stepperY.setSpeed(0);
-  if (z >  20000 && zspeed > 0) stepperZ.setSpeed(0);
+  if (z >  10000 && zspeed > 0) stepperZ.setSpeed(0);
   if (z <      0 && zspeed < 0) stepperZ.setSpeed(0);
   
   stepperX.runSpeed();

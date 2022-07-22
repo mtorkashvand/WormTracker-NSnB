@@ -19,6 +19,9 @@ Options:
                                             [default: L5000]
     --name=NAME                         device name.
                                             [default: hub]
+    --framerate=NUMBER                  camera frame rate
+                                            [default: 1]
+    
 """
 
 # import os
@@ -41,9 +44,11 @@ class WormTrackerHub(Hub):
             inbound,
             outbound,
             server,
+            framerate,
             name="hub"):
 
         Hub.__init__(self, inbound, outbound, server, name)
+        self.framerate=framerate
 
     def toggle_recording(self, state):
         if state in ["true", "True", "1", 1, True]:
@@ -135,6 +140,9 @@ class WormTrackerHub(Hub):
 
     def _teensy_commands_disable(self):
         self.send("teensy_commands disable")
+    
+    def duration(self, sec):
+        self.send("writer set_duration {}".format(sec*self.framerate))
 
 def main():
     """This is the hub for lambda."""
@@ -144,6 +152,7 @@ def main():
         inbound=parse_host_and_port(arguments["--inbound"]),
         outbound=parse_host_and_port(arguments["--outbound"]),
         server=int(arguments["--server"]),
+        framerate=int(arguments["--framerate"]),
         name=arguments["--name"])
 
     scope.run()
